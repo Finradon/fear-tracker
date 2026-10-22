@@ -326,3 +326,7 @@ scripts/uninstall.sh --purge   # also deletes the state files
 ```
 
 The modprobe config from section 1 is yours to remove: `/etc/modules-load.d/v4l2loopback.conf` and `/etc/modprobe.d/v4l2loopback.conf`.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
