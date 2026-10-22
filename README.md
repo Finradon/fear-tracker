@@ -1,15 +1,21 @@
 # Fear Tracker
 
-A **Fear** tracker for GMs running [Daggerheart](https://www.daggerheart.com/) over video calls.
-You change Fear from the GNOME top bar or with a keyboard shortcut, and your players see it as a
-small glowing overlay in your webcam feed, composited by OBS and sent to Zoom (or any other call
-app) through the OBS Virtual Camera.
+A **Fear** and **countdown** tracker for GMs running [Daggerheart](https://www.daggerheart.com/)
+over video calls. You change Fear and countdowns from the GNOME top bar (Fear also by keyboard
+shortcut), and your players see them as small glowing overlays in your webcam feed, composited
+by OBS and sent to Zoom (or any other call app) through the OBS Virtual Camera.
 
 ![Overlay themes: ember, frost and blood](docs/themes.png)
 
 When Fear rises, the new pips ignite one by one and the bar shakes. When it falls, they gutter out:
 
 ![Overlay animation frames](docs/animation.png)
+
+Countdowns are a separate overlay, so you can place them anywhere in the frame. Each one shows
+the remaining value on a die-like badge: consequence countdowns use the theme colour, progress
+countdowns are gold. A countdown that reaches 0 bursts and stays lit until you delete it:
+
+![Countdown overlay](docs/countdowns.png)
 
 <img src="docs/menu.png" alt="GNOME top-bar menu" align="right" width="240">
 
@@ -19,8 +25,10 @@ When Fear rises, the new pips ignite one by one and the bar shakes. When it fall
   grid to set an exact value, and preferences.
 - Global keyboard shortcuts with an on-screen confirmation. The shortcuts are configurable.
 - A configurable maximum (default 12). The value persists across restarts.
-- A transparent overlay page built for OBS Browser Sources, with three themes, five sizes,
-  alignment options and CSS-only animations.
+- Up to 3 named countdowns at a time, each either a consequence or a progress countdown. You
+  add, tick and delete them right in the top-bar menu.
+- Two transparent overlay pages built for OBS Browser Sources (Fear and countdowns), with three
+  themes, five sizes, alignment options and CSS-only animations.
 - A tiny local server (Python standard library only) that is bound to `127.0.0.1`.
 - A plain-text fallback (`●●●●●○○○○○○○`) for OBS Text sources.
 - A command-line script to set Fear, so you can try everything without GNOME.
@@ -30,8 +38,9 @@ When Fear rises, the new pips ignite one by one and the bar shakes. When it fall
 ## How it works
 
 ```
-GNOME extension ──writes──▶ ~/.config/fear-tracker/fear.json ◀──reads── fear_server.py ──HTTP──▶ overlay.html
-                            ~/.config/fear-tracker/fear.txt              (127.0.0.1:8765)        (OBS Browser Source)
+GNOME extension ──writes──▶ ~/.config/fear-tracker/fear.json ◀──reads── fear_server.py ──HTTP──▶ overlay.html     (Fear)
+                            ~/.config/fear-tracker/fear.txt              (127.0.0.1:8765)        countdowns.html  (countdowns)
+                                                                                                    two OBS Browser Sources
                                                                                                          │
                                              Zoom ◀── OBS Virtual Camera (v4l2loopback) ◀── OBS scene ◀──┘
 ```
@@ -115,9 +124,12 @@ gnome-extensions info fear-tracker@local    # State: ACTIVE
    - URL: `http://127.0.0.1:8765/overlay.html` (add parameters, see below)
    - Width × height: **800 × 100** for the default size (see the table below)
    - Clear the *Custom CSS* field. The page is already transparent.
-3. Keep the browser source **above** the webcam in the source list, and drag it into a corner.
-   Use `?align=left` or `?align=right` so the pips hug that edge.
-4. Click **Start Virtual Camera**.
+3. For countdowns, add a second **Browser** source with the URL
+   `http://127.0.0.1:8765/countdowns.html` and a size of **520 × 220**. It stays transparent
+   while there are no countdowns.
+4. Keep both browser sources **above** the webcam in the source list, and drag each one where
+   you want it. Use `?align=left` or `?align=right` so the content hugs that edge.
+5. Click **Start Virtual Camera**.
 
 ### 4. Zoom (or another call app)
 
@@ -146,6 +158,14 @@ You can also click the top-bar button to use the menu. **Preferences** (in the m
 - the shortcuts: click a row, then press the new combination. Esc cancels and Backspace
   disables the shortcut.
 
+### Countdowns
+
+The **Countdowns** section of the top-bar menu lists the active countdowns with **−** (tick
+down), **+** (tick up) and **✕** (delete). To add one, type a name, set the start value (1–30),
+choose **Consequence** or **Progress**, and click **Add** or press Enter. Up to 3 countdowns can
+be active at once. A countdown stops at 0 and shows as triggered until you delete it or tick it
+back up. The menu stays open while you work, so you can make several changes in a row.
+
 ### Without GNOME
 
 `scripts/set_fear.py` writes the same state files, so the overlay works on any desktop:
@@ -155,6 +175,9 @@ make serve                              # run the server in the foreground
 python3 scripts/set_fear.py 5           # set Fear to 5
 python3 scripts/set_fear.py +1          # relative change (+N / -N)
 python3 scripts/set_fear.py 3 --max 8   # change the maximum
+python3 scripts/set_fear.py --add-countdown "Ritual completes" 6 [--progress]
+python3 scripts/set_fear.py --tick 1    # tick countdown 1 down (--by N to change the amount)
+python3 scripts/set_fear.py --remove-countdown 1
 python3 scripts/set_fear.py             # print the current state
 make demo                               # random walk, to preview the animations
 ```
@@ -188,7 +211,20 @@ Recommended browser-source sizes for 12 pips with the label shown:
 | `lg` | 1100 × 130 |
 | `xl` | 1400 × 170 |
 
-To shrink the overlay, use a smaller `size` rather than scaling the source down, so it stays
+**Countdown page** (`countdowns.html`) accepts `theme`, `size`, `label` (`0` hides the names),
+`plate`, `motion`, `poll` and `bg` as above, plus:
+
+| Param | Values | Default |
+|---|---|---|
+| `align` | `left` `center` `right` (with `right`, the badge sits on the right) | `left` |
+| `valign` | `top` `center` `bottom` | `top` |
+| `layout` | `column` (stacked) or `row` (side by side) | `column` |
+
+Recommended sizes for three countdowns: **520 × 220** for `md` in a column, or about
+1000 × 80 for `layout=row&size=sm`. Choose `valign` to match the corner you put the source in,
+so the list grows away from the edge.
+
+To shrink an overlay, use a smaller `size` rather than scaling the source down, so it stays
 sharp. If the source is too narrow, the pips wrap onto a second row. If the server is
 unreachable, the overlay keeps showing the last value.
 
@@ -206,11 +242,13 @@ systemd service, run `systemctl --user edit fear-overlay` and add:
 Environment=FEAR_PORT=9000
 ```
 
-The server only listens on `127.0.0.1` and serves nothing but the overlay and `/state`.
+The server only listens on `127.0.0.1` and serves nothing but the overlay pages and `/state`.
 
 **State files** live in `$XDG_CONFIG_HOME/fear-tracker/` (normally `~/.config/fear-tracker/`):
 
-- `fear.json`: `{"fear": 5, "max": 12, "updated": <unix ms>}`
+- `fear.json`: `{"fear": 5, "max": 12, "updated": <unix ms>, "countdowns": [...]}`. Each
+  countdown is `{"id": "a1b2c3d4", "name": "Ritual completes", "start": 6, "value": 4,
+  "kind": "consequence"}`, where `kind` is `consequence` or `progress`. There are at most 3.
 - `fear.txt`: `●●●●●○○○○○○○`
 
 Any program can write `fear.json`, as long as it does so atomically. The extension picks up
