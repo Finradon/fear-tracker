@@ -1,0 +1,15 @@
+[Unit]
+Description=Daggerheart Fear overlay server (127.0.0.1 only)
+Documentation=file://%h/.local/share/fear-tracker/README.md
+
+[Service]
+Type=simple
+# scripts/install.sh links ~/.local/share/fear-tracker to the repo checkout.
+ExecStart=/usr/bin/python3 %h/.local/share/fear-tracker/server/fear_server.py
+# Environment=FEAR_PORT=8765
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target
