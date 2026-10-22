@@ -48,15 +48,18 @@ The rest of this file is the detailed version.
 
 | What | Package | Notes |
 |---|---|---|
-| OBS Studio | `obs-studio` | From the Arch `extra` repo (CachyOS rebuilds it under the same name). |
-| **Browser Source** | `obs-studio-plugin-browser` | **Required.** The CEF browser plugin is a separate package on Arch, and without it OBS has no "Browser" source. |
+| OBS Studio | `obs-studio` | CachyOS's optimized rebuild (`cachyos-extra-v3`/`-v4`/`-znver4`; pacman picks the one for your CPU). |
+| **Browser Source** | `obs-studio-plugin-browser` | **Required.** The CEF browser plugin is a separate package, and without it OBS has no "Browser" source. Install it from the same repo as `obs-studio` so the versions match. |
 | v4l2loopback kernel module | *none* (in the CachyOS kernel) | See below. |
 | `v4l2loopback-ctl` (optional) | `v4l2loopback-utils` | Depends on the virtual `V4L2LOOPBACK-MODULE`, which the CachyOS kernels provide, so it won't pull in DKMS. |
 | `v4l2-ctl` (handy for debugging) | `v4l-utils` | |
 
 ```sh
 sudo pacman -S --needed obs-studio obs-studio-plugin-browser v4l-utils
+paru -S zoom        # AUR (or yay -S zoom)
 ```
+
+`obs-studio` lists `v4l2loopback-dkms` as an *optional* dependency. Ignore that on a CachyOS kernel (see below).
 
 **v4l2loopback on CachyOS.** The CachyOS kernels (`linux-cachyos`, `-bore`, `-lts`, …) build v4l2loopback in-tree as a regular module (`CONFIG_V4L2_LOOPBACK=m`, `drivers/media/v4l2-core/v4l2loopback.c`, version 0.15.4 on the 7.3 kernel). Their packages declare `provides=(… V4L2LOOPBACK-MODULE …)`, so there is **no separate kernel-specific package and you don't need DKMS**. Check with:
 
@@ -66,7 +69,7 @@ modinfo v4l2loopback | head -3     # filename: .../kernel/drivers/media/v4l2-cor
 
 Don't also install `v4l2loopback-dkms` on a CachyOS kernel. It would build a second copy that shadows the in-tree one, and DKMS version mismatches are the usual cause of the "OBS virtual camera broke after update" reports on the CachyOS forum. You only need `v4l2loopback-dkms` plus the matching `*-headers` package if you boot a non-CachyOS kernel such as stock Arch `linux`.
 
-Alternatively, the Flatpak OBS (`com.obsproject.Studio`) bundles the browser plugin. It still needs the host's v4l2loopback module loaded, as below, because a Flatpak cannot `modprobe`.
+(Not used here: the Flatpak OBS `com.obsproject.Studio` bundles the browser plugin, but it can't `modprobe`, so it relies on the module config below.)
 
 ### Load the module (persistent across reboots)
 
@@ -211,7 +214,8 @@ If the browser plugin isn't available: **Sources → + → Text (FreeType 2)**, 
 
 Zoom-on-Linux notes:
 - Start the OBS virtual camera **before** opening Zoom, or at least before opening its video settings. With `exclusive_caps=1` the device only advertises itself as a capture device once something is writing to it, so Zoom may not list it, or may show black, if OBS started later. If that happens, restart Zoom's video (stop and start video) or restart Zoom.
-- **Flatpak Zoom** (`us.zoom.Zoom`) ships with `--device=all`, so it can see `/dev/video*` without extra permissions. If you've tightened it with Flatseal, re-allow "All devices".
+- **AUR `zoom`** (the setup assumed here) is the unsandboxed native client. It opens `/dev/video10` directly, and logind gives the logged-in user access to all video4linux devices, including the loopback one, so no `video` group or permissions are needed. It is an X11 app and runs under XWayland on GNOME, which doesn't affect the camera.
+- If you use Flatpak Zoom (`us.zoom.Zoom`) instead, it ships with `--device=all`, so it can also see `/dev/video*`. If you've tightened it with Flatseal, re-allow "All devices".
 - Zoom in a browser (app.zoom.us) works too: pick "OBS Virtual Camera" in the browser's camera permission prompt.
 - Don't let both OBS and Zoom open the **real** webcam. Zoom must use the virtual camera only.
 - Zoom may compress the video heavily. The `md`/`lg` sizes survive that better than `xs`.
