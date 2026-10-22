@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.fear-tracker"
+          path="/org/gnome/shell/extensions/fear-tracker/">
+    <key name="increment-fear" type="as">
+      <default><![CDATA[['<Control><Super>Page_Up']]]></default>
+      <summary>Increase Fear by one</summary>
+    </key>
+    <key name="decrement-fear" type="as">
+      <default><![CDATA[['<Control><Super>Page_Down']]]></default>
+      <summary>Decrease Fear by one</summary>
+    </key>
+    <key name="reset-fear" type="as">
+      <default><![CDATA[['<Control><Super>Home']]]></default>
+      <summary>Reset Fear to zero</summary>
+    </key>
+    <key name="max-fear" type="i">
+      <range min="1" max="30"/>
+      <default>12</default>
+      <summary>Maximum Fear</summary>
+    </key>
+    <key name="show-osd" type="b">
+      <default>true</default>
+      <summary>Show an on-screen popup when Fear changes via shortcut</summary>
+    </key>
+  </schema>
+</schemalist>

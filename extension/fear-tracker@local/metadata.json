@@ -1,0 +1,8 @@
+{
+  "uuid": "fear-tracker@local",
+  "name": "Fear Tracker",
+  "description": "Track the Daggerheart GM's Fear from the top bar and publish it to ~/.config/fear-tracker/ for an OBS overlay.",
+  "shell-version": ["51"],
+  "settings-schema": "org.gnome.shell.extensions.fear-tracker",
+  "version-name": "1.0"
+}

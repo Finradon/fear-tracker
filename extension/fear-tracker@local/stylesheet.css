@@ -1,0 +1,48 @@
+.fear-tracker-label {
+  font-weight: bold;
+  transition-duration: 200ms;
+}
+
+.fear-tracker-label.fear-tracker-flash {
+  color: #e48cff;
+  text-shadow: 0 0 6px rgba(214, 64, 255, 0.9);
+}
+
+.fear-tracker-title {
+  font-weight: bold;
+  font-size: 1.15em;
+}
+
+.fear-tracker-pips {
+  color: #c77dff;
+  font-size: 1.1em;
+  padding-top: 4px;
+}
+
+.fear-tracker-controls {
+  spacing: 8px;
+}
+
+.fear-tracker-button {
+  min-height: 24px;
+  padding: 6px 12px;
+}
+
+.fear-tracker-grid {
+  spacing: 6px;
+}
+
+.fear-tracker-grid-row {
+  spacing: 6px;
+}
+
+.fear-tracker-number {
+  min-width: 32px;
+  min-height: 24px;
+  padding: 4px 0;
+}
+
+.fear-tracker-number:checked {
+  background-color: #8a2be2;
+  color: #ffffff;
+}
