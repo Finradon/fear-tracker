@@ -44,10 +44,43 @@ class StateFileTests(unittest.TestCase):
 
     def test_normalize(self):
         n = fearstate.normalize
-        self.assertEqual(n({"fear": 20, "max": 6, "updated": 1}), {"fear": 6, "max": 6, "updated": 1})
-        self.assertEqual(n({"fear": 3}), {"fear": 3, "max": 12, "updated": 0})
+        self.assertEqual(n({"fear": 20, "max": 6, "updated": 1}),
+                         {"fear": 6, "max": 6, "updated": 1, "countdowns": []})
+        self.assertEqual(n({"fear": 3}), {"fear": 3, "max": 12, "updated": 0, "countdowns": []})
         self.assertEqual(n({"fear": 3, "max": "x", "updated": 1.5})["max"], 12)
         self.assertEqual(n({"fear": -1, "max": 12})["fear"], 0)
+
+    def test_countdowns_roundtrip_and_fear_writes_preserve_them(self):
+        cds = [{"id": "a1", "name": "Ritual", "start": 6, "value": 4, "kind": "consequence"},
+               {"id": "b2", "name": "Way out", "start": 8, "value": 8, "kind": "progress"}]
+        fearstate.write_state(self.dir, 3, 12, cds)
+        self.assertEqual(fearstate.read_state(self.dir)["countdowns"], cds)
+        self.assertEqual(fearstate.write_state(self.dir, 9, 12)["countdowns"], [])
+
+    def test_normalize_countdowns(self):
+        nc = fearstate.normalize_countdowns
+        self.assertEqual(nc(None), [])
+        self.assertEqual(nc("nope"), [])
+        self.assertEqual(nc([{"id": "x", "name": "  Doom  ", "start": 99, "value": -4, "kind": "weird"}]),
+                         [{"id": "x", "name": "Doom", "start": 30, "value": 0, "kind": "consequence"}])
+        # value defaults to start, is clamped to it, names are truncated
+        self.assertEqual(nc([{"id": "x", "start": 4}])[0]["value"], 4)
+        self.assertEqual(nc([{"id": "x", "start": 4, "value": 9}])[0]["value"], 4)
+        self.assertEqual(len(nc([{"id": "x", "name": "n" * 50, "start": 4}])[0]["name"]), 32)
+        self.assertEqual(nc([{"id": "x", "name": 5, "start": 4}])[0]["name"], "")
+        # invalid entries dropped: bad id, duplicate id, missing/bool start, non-dict
+        bad = [{"id": "", "start": 3}, {"id": "a b", "start": 3}, {"id": "x" * 17, "start": 3},
+               {"id": 7, "start": 3}, {"id": "ok", "start": True}, {"id": "ok"}, "str",
+               {"id": "ok", "start": 0}]
+        self.assertEqual(nc(bad), [{"id": "ok", "name": "", "start": 1, "value": 1, "kind": "consequence"}])
+        self.assertEqual([c["id"] for c in nc([{"id": "d", "start": 2}, {"id": "d", "start": 3}])], ["d"])
+        # at most three, in order
+        many = [{"id": f"c{i}", "start": 5} for i in range(5)]
+        self.assertEqual([c["id"] for c in nc(many)], ["c0", "c1", "c2"])
+
+    def test_old_files_without_countdowns(self):
+        (self.dir / "fear.json").write_text('{"fear": 2, "max": 12, "updated": 1}')
+        self.assertEqual(fearstate.read_state(self.dir)["countdowns"], [])
 
     def test_concurrent_reads_never_see_partial_file(self):
         stop = threading.Event()
@@ -109,7 +142,7 @@ class ServerTests(unittest.TestCase):
         res, body = self.request("/state")
         self.assertEqual(res.status, 200)
         self.assertEqual(res.getheader("Content-Type"), "application/json")
-        self.assertEqual(json.loads(body), {"fear": 0, "max": 12, "updated": 0})
+        self.assertEqual(json.loads(body), {"fear": 0, "max": 12, "updated": 0, "countdowns": []})
 
     def test_state_reads_fresh_each_time(self):
         fearstate.write_state(self.dir, 4, 12)
@@ -122,7 +155,14 @@ class ServerTests(unittest.TestCase):
         (self.dir / "fear.json").write_text("{not json")
         self.assertEqual(json.loads(self.request("/state")[1])["fear"], 0)
         (self.dir / "fear.json").write_text('{"fear": 50, "max": 8, "updated": 7}')
-        self.assertEqual(json.loads(self.request("/state")[1]), {"fear": 8, "max": 8, "updated": 7})
+        self.assertEqual(json.loads(self.request("/state")[1]),
+                         {"fear": 8, "max": 8, "updated": 7, "countdowns": []})
+
+    def test_state_includes_normalized_countdowns(self):
+        (self.dir / "fear.json").write_text(json.dumps({"fear": 1, "max": 12, "updated": 7, "countdowns": [
+            {"id": "a", "name": "<b>Doom</b>", "start": 4, "value": 9, "kind": "progress"}, {"id": "a", "start": 2}]}))
+        self.assertEqual(json.loads(self.request("/state")[1])["countdowns"],
+                         [{"id": "a", "name": "<b>Doom</b>", "start": 4, "value": 4, "kind": "progress"}])
 
     def test_no_store_everywhere(self):
         for path in ["/state", "/overlay.html", "/missing", "/"]:
@@ -137,6 +177,9 @@ class ServerTests(unittest.TestCase):
         self.assertEqual((res.status, res.getheader("Location")), (302, "/overlay.html"))
         res, body = self.request("/overlay.html?theme=frost&size=lg")
         self.assertEqual(res.status, 200)
+        res, body = self.request("/countdowns.html?layout=row")
+        self.assertEqual(res.status, 200)
+        self.assertIn(b"<title>Countdowns</title>", body)
 
     def test_head(self):
         res, body = self.request("/state", method="HEAD")
@@ -204,6 +247,33 @@ class SetFearCliTests(unittest.TestCase):
         self.assertEqual((self.state()["fear"], self.state()["max"]), (8, 8))
         out = self.run_cli()
         self.assertIn("Fear 8/8", out)
+
+    def test_countdown_commands(self):
+        self.run_cli("--init")
+        self.run_cli("--add-countdown", "Ritual completes", "6")
+        self.run_cli("--add-countdown", "Way out", "4", "--progress")
+        cds = self.state()["countdowns"]
+        self.assertEqual([(c["name"], c["start"], c["value"], c["kind"]) for c in cds],
+                         [("Ritual completes", 6, 6, "consequence"), ("Way out", 4, 4, "progress")])
+        self.run_cli("--tick", "1")
+        self.run_cli("--tick", "1", "--by", "-2")
+        self.run_cli("--tick", "2", "--by", "5")
+        cds = self.state()["countdowns"]
+        self.assertEqual([c["value"] for c in cds], [3, 4])
+        self.run_cli("7")  # changing Fear keeps countdowns
+        self.assertEqual(len(self.state()["countdowns"]), 2)
+        out = self.run_cli()
+        self.assertIn("Ritual completes", out)
+        self.run_cli("--remove-countdown", "1")
+        self.assertEqual([c["name"] for c in self.state()["countdowns"]], ["Way out"])
+        self.run_cli("--add-countdown", "A", "2")
+        self.run_cli("--add-countdown", "B", "2")
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.run_cli("--add-countdown", "C", "2")
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.run_cli("--tick", "9")
+        self.run_cli("--clear-countdowns")
+        self.assertEqual(self.state()["countdowns"], [])
 
     def test_init_does_not_overwrite(self):
         self.run_cli("7")

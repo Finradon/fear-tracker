@@ -5,12 +5,17 @@ Mirrors extension/fear-tracker@local/state.js; keep the two in sync.
 
 import json
 import os
+import re
 import tempfile
 import time
 from pathlib import Path
 
 DEFAULT_MAX = 12
 MAX_LIMIT = 30
+MAX_COUNTDOWNS = 3
+COUNTDOWN_LIMIT = 30
+NAME_LIMIT = 32
+COUNTDOWN_ID = re.compile(r"[A-Za-z0-9_-]{1,16}")
 JSON_NAME = "fear.json"
 TXT_NAME = "fear.txt"
 
@@ -23,7 +28,7 @@ def default_state_dir() -> Path:
 
 
 def default_state() -> dict:
-    return {"fear": 0, "max": DEFAULT_MAX, "updated": 0}
+    return {"fear": 0, "max": DEFAULT_MAX, "updated": 0, "countdowns": []}
 
 
 def _is_int(value) -> bool:
@@ -34,8 +39,35 @@ def clamp(value: int, lo: int, hi: int) -> int:
     return max(lo, min(hi, value))
 
 
+def normalize_countdowns(raw) -> list:
+    """Return the valid countdowns (at most MAX_COUNTDOWNS), dropping bad entries."""
+    if not isinstance(raw, list):
+        return []
+    result, seen = [], set()
+    for c in raw:
+        if len(result) == MAX_COUNTDOWNS:
+            break
+        if not isinstance(c, dict) or not _is_int(c.get("start")):
+            continue
+        cid = c.get("id")
+        if not isinstance(cid, str) or not COUNTDOWN_ID.fullmatch(cid) or cid in seen:
+            continue
+        start = clamp(c["start"], 1, COUNTDOWN_LIMIT)
+        value = c.get("value")
+        name = c.get("name")
+        result.append({
+            "id": cid,
+            "name": name.strip()[:NAME_LIMIT] if isinstance(name, str) else "",
+            "start": start,
+            "value": clamp(value, 0, start) if _is_int(value) else start,
+            "kind": "progress" if c.get("kind") == "progress" else "consequence",
+        })
+        seen.add(cid)
+    return result
+
+
 def normalize(raw) -> dict | None:
-    """Return a clamped {fear, max, updated} dict, or None if unusable."""
+    """Return a clamped {fear, max, updated, countdowns} dict, or None if unusable."""
     if not isinstance(raw, dict) or not _is_int(raw.get("fear")):
         return None
     max_ = clamp(raw["max"], 1, MAX_LIMIT) if _is_int(raw.get("max")) else DEFAULT_MAX
@@ -44,6 +76,7 @@ def normalize(raw) -> dict | None:
         "fear": clamp(raw["fear"], 0, max_),
         "max": max_,
         "updated": updated if _is_int(updated) else 0,
+        "countdowns": normalize_countdowns(raw.get("countdowns")),
     }
 
 
@@ -73,10 +106,15 @@ def _write_atomic(path: Path, text: str) -> None:
         raise
 
 
-def write_state(state_dir: Path, fear: int, max_: int) -> dict:
+def write_state(state_dir: Path, fear: int, max_: int, countdowns=()) -> dict:
     """Clamp and atomically write fear.json and fear.txt. Returns the state."""
     max_ = clamp(max_, 1, MAX_LIMIT)
-    state = {"fear": clamp(fear, 0, max_), "max": max_, "updated": int(time.time() * 1000)}
+    state = {
+        "fear": clamp(fear, 0, max_),
+        "max": max_,
+        "updated": int(time.time() * 1000),
+        "countdowns": normalize_countdowns(list(countdowns)),
+    }
     state_dir.mkdir(parents=True, exist_ok=True)
     _write_atomic(state_dir / JSON_NAME, json.dumps(state, separators=(",", ":")) + "\n")
     _write_atomic(state_dir / TXT_NAME, pip_text(state["fear"], state["max"]))
