@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="ember">
+<head>
+<meta charset="utf-8">
+<title>Fear</title>
+<!--
+  Daggerheart Fear overlay for an OBS Browser Source.
+  Query params (all optional):
+    theme=ember|frost|blood   size=xs|sm|md|lg|xl|<px>   align=left|center|right
+    label=0|1  count=0|1  plate=0|1  motion=0|1  poll=<ms>  bg=<hex, preview only>
+  Recommended source size for size=md (default): 800 x 100.
+-->
+<style>
+  :root {
+    --pip: 30px;
+    --justify: center;
+
+    --core: #d946ef;
+    --hot: #ffe4ff;
+    --deep: #581c87;
+    --glow: rgba(217, 70, 239, 0.8);
+    --rim: rgba(205, 170, 235, 0.55);
+    --shell: rgba(20, 6, 30, 0.6);
+    --text: #f3e2ff;
+    --plate: rgba(12, 4, 18, 0.55);
+    --plate-edge: rgba(200, 120, 255, 0.22);
+  }
+  [data-theme="frost"] {
+    --core: #38bdf8;
+    --hot: #ecfbff;
+    --deep: #1e3a8a;
+    --glow: rgba(56, 189, 248, 0.75);
+    --rim: rgba(175, 215, 245, 0.55);
+    --shell: rgba(4, 12, 26, 0.6);
+    --text: #e2f6ff;
+    --plate: rgba(4, 10, 22, 0.55);
+    --plate-edge: rgba(120, 200, 255, 0.22);
+  }
+  [data-theme="blood"] {
+    --core: #e11d48;
+    --hot: #ffe1e1;
+    --deep: #7f1d1d;
+    --glow: rgba(225, 29, 72, 0.75);
+    --rim: rgba(235, 175, 175, 0.5);
+    --shell: rgba(26, 4, 6, 0.6);
+    --text: #ffe4e4;
+    --plate: rgba(18, 4, 4, 0.55);
+    --plate-edge: rgba(255, 110, 110, 0.2);
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: transparent;
+  }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: var(--justify);
+    box-sizing: border-box;
+    padding: 0 calc(var(--pip) * 0.5);
+    font-family: "Cinzel", "Cormorant SC", "Trajan Pro", "Palatino Linotype", "Book Antiqua",
+                 Palatino, "URW Palladio L", Georgia, serif;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+  }
+
+  .tracker {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--pip) * 0.4);
+    max-width: 100%;
+    opacity: 0;
+    transition: opacity 0.8s ease;
+  }
+  .tracker.ready { opacity: 1; }
+
+  .label {
+    display: flex;
+    align-items: baseline;
+    gap: calc(var(--pip) * 0.28);
+    color: var(--text);
+    font-size: calc(var(--pip) * 0.62);
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    text-shadow: 0 0 calc(var(--pip) * 0.25) var(--glow), 0 1px 2px #000, 0 0 1px #000;
+    white-space: nowrap;
+  }
+  .count {
+    min-width: 1.3em;
+    font-size: 1.35em;
+    letter-spacing: 0;
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+  .no-label .label, .no-count .count { display: none; }
+
+  .pips {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    gap: calc(var(--pip) * 0.24);
+    padding: calc(var(--pip) * 0.28) calc(var(--pip) * 0.42);
+    border-radius: calc(var(--pip) * 0.9);
+    background: var(--plate);
+    box-shadow: inset 0 0 0 1px var(--plate-edge), 0 0 calc(var(--pip) * 0.4) rgba(0, 0, 0, 0.35);
+  }
+  .no-plate .pips { background: none; box-shadow: none; }
+  /* Flash of the whole bar when Fear rises. */
+  .pips::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: 0 0 calc(var(--pip) * 0.7) var(--glow), inset 0 0 calc(var(--pip) * 0.5) var(--glow);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .pip {
+    position: relative;
+    width: var(--pip);
+    height: var(--pip);
+    flex: none;
+  }
+  .pip i {
+    position: absolute;
+    display: block;
+  }
+  /* Unlit token: a dim diamond outline. */
+  .pip .shell {
+    inset: 17%;
+    transform: rotate(45deg);
+    border-radius: 16%;
+    border: max(1.5px, calc(var(--pip) * 0.065)) solid var(--rim);
+    background: var(--shell);
+    box-shadow: inset 0 0 calc(var(--pip) * 0.15) rgba(0, 0, 0, 0.8);
+  }
+  /* Lit token: a hot ember inside the diamond. */
+  .pip .core {
+    inset: 17%;
+    border-radius: 16%;
+    background:
+      radial-gradient(circle at 50% 50%, var(--hot) 0%, var(--core) 38%, var(--deep) 100%);
+    box-shadow: 0 0 calc(var(--pip) * 0.12) var(--hot) inset, 0 0 calc(var(--pip) * 0.18) var(--core);
+    opacity: 0;
+    transform: rotate(45deg) scale(0.6);
+  }
+  .pip .glow {
+    inset: -35%;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--glow) 0%, transparent 62%);
+    opacity: 0;
+  }
+  .pip .flare {
+    inset: -10%;
+    border-radius: 50%;
+    border: max(1px, calc(var(--pip) * 0.05)) solid var(--hot);
+    box-shadow: 0 0 calc(var(--pip) * 0.3) var(--core);
+    opacity: 0;
+  }
+
+  .pip.on .core { opacity: 1; transform: rotate(45deg) scale(1); }
+  .pip.on .glow {
+    opacity: 0.8;
+    animation: pulse 3.2s ease-in-out infinite;
+    animation-delay: calc(var(--i) * -0.41s);
+  }
+
+  .pip.ignite .core {
+    animation: ignite-core 0.65s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+    animation-delay: var(--d, 0s);
+  }
+  .pip.ignite .flare {
+    animation: flare 0.75s ease-out both;
+    animation-delay: var(--d, 0s);
+  }
+  .pip.douse .core { animation: douse-core 0.55s ease-in both; }
+  .pip.douse .glow { animation: douse-glow 0.55s ease-out both; }
+  .pips.tremor { animation: tremor 0.42s linear; }
+  .pips.tremor::after { animation: bar-flash 0.7s ease-out; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.5; transform: scale(0.9); }
+    50% { opacity: 0.95; transform: scale(1.06); }
+  }
+  @keyframes ignite-core {
+    0% { opacity: 0; transform: rotate(45deg) scale(0.2); filter: brightness(3); }
+    45% { opacity: 1; transform: rotate(45deg) scale(1.3); filter: brightness(2); }
+    100% { opacity: 1; transform: rotate(45deg) scale(1); filter: brightness(1); }
+  }
+  @keyframes flare {
+    0% { opacity: 0; transform: scale(0.4); }
+    25% { opacity: 0.9; }
+    100% { opacity: 0; transform: scale(1.7); }
+  }
+  @keyframes douse-core {
+    0% { opacity: 1; transform: rotate(45deg) scale(1); filter: brightness(1.5) saturate(1); }
+    100% { opacity: 0; transform: rotate(45deg) scale(0.45); filter: brightness(0.6) saturate(0); }
+  }
+  @keyframes douse-glow {
+    0% { opacity: 0.8; transform: scale(1); }
+    100% { opacity: 0; transform: scale(1.35) translateY(-8%); }
+  }
+  @keyframes tremor {
+    0%, 100% { transform: translate(0, 0); }
+    12% { transform: translate(calc(var(--pip) * -0.09), calc(var(--pip) * 0.03)); }
+    28% { transform: translate(calc(var(--pip) * 0.08), calc(var(--pip) * -0.03)); }
+    44% { transform: translate(calc(var(--pip) * -0.06), calc(var(--pip) * 0.02)); }
+    60% { transform: translate(calc(var(--pip) * 0.04), 0); }
+    78% { transform: translate(calc(var(--pip) * -0.02), 0); }
+  }
+  @keyframes bar-flash {
+    0% { opacity: 0; }
+    20% { opacity: 0.8; }
+    100% { opacity: 0; }
+  }
+
+  .still *, .still *::after { animation: none !important; transition: none !important; }
+</style>
+</head>
+<body>
+<div class="tracker" id="tracker" role="status" aria-live="polite">
+  <div class="label"><span>Fear</span><span class="count" id="count">0</span></div>
+  <div class="pips" id="pips"></div>
+</div>
+<script>
+(() => {
+  'use strict';
+
+  const MAX_LIMIT = 30;
+  const DEFAULT_MAX = 12;
+  const SIZES = {xs: 16, sm: 22, md: 30, lg: 42, xl: 58};
+  const THEMES = ['ember', 'frost', 'blood'];
+  const ALIGN = {left: 'flex-start', center: 'center', right: 'flex-end'};
+  const STAGGER_MS = 70;
+
+  const params = new URLSearchParams(location.search);
+  const root = document.documentElement;
+  const tracker = document.getElementById('tracker');
+  const pipsEl = document.getElementById('pips');
+  const countEl = document.getElementById('count');
+
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const flag = (name, dflt) => (params.has(name) ? params.get(name) !== '0' : dflt);
+
+  const theme = params.get('theme');
+  root.dataset.theme = THEMES.includes(theme) ? theme : 'ember';
+
+  const sizeParam = params.get('size') || 'md';
+  const sizePx = SIZES[sizeParam] ?? clamp(parseInt(sizeParam, 10) || SIZES.md, 8, 200);
+  root.style.setProperty('--pip', `${sizePx}px`);
+  root.style.setProperty('--justify', ALIGN[params.get('align')] || ALIGN.center);
+
+  const bg = params.get('bg');
+  if (bg && /^[0-9a-f]{3,8}$/i.test(bg))
+    document.body.style.background = `#${bg}`;
+
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const motion = flag('motion', !reducedMotion);
+  tracker.classList.toggle('no-label', !flag('label', true));
+  tracker.classList.toggle('no-count', !flag('count', true));
+  tracker.classList.toggle('no-plate', !flag('plate', true));
+  tracker.classList.toggle('still', !motion);
+
+  const pollMs = clamp(parseInt(params.get('poll'), 10) || 300, 100, 5000);
+
+  let pips = [];
+  let shown = null; // last rendered {fear, max}
+
+  function buildPips(max) {
+    pipsEl.replaceChildren();
+    pips = [];
+    for (let i = 0; i < max; i++) {
+      const pip = document.createElement('div');
+      pip.className = 'pip';
+      pip.style.setProperty('--i', i);
+      pip.innerHTML = '<i class="glow"></i><i class="shell"></i><i class="core"></i><i class="flare"></i>';
+      pipsEl.append(pip);
+      pips.push(pip);
+    }
+  }
+
+  // Re-trigger a CSS animation class even if it is already present.
+  function restart(el, cls) {
+    el.classList.remove(cls);
+    void el.offsetWidth;
+    el.classList.add(cls);
+  }
+
+  function render({fear, max}) {
+    const prev = shown ? Math.min(shown.fear, max) : fear;
+    if (!shown || max !== shown.max)
+      buildPips(max);
+
+    pips.forEach((pip, i) => pip.classList.toggle('on', i < fear));
+
+    if (shown && motion) {
+      if (fear > prev) {
+        for (let i = prev; i < fear; i++) {
+          pips[i].classList.remove('douse');
+          pips[i].style.setProperty('--d', `${(i - prev) * STAGGER_MS}ms`);
+          restart(pips[i], 'ignite');
+        }
+        restart(pipsEl, 'tremor');
+      } else if (fear < prev) {
+        for (let i = fear; i < prev; i++) {
+          pips[i].classList.remove('ignite');
+          restart(pips[i], 'douse');
+        }
+      }
+    }
+
+    countEl.textContent = fear;
+    tracker.setAttribute('aria-label', `Fear ${fear} of ${max}`);
+    tracker.classList.add('ready');
+    shown = {fear, max};
+  }
+
+  pipsEl.addEventListener('animationend', e => {
+    const pip = e.target.closest('.pip');
+    if (e.animationName === 'tremor' && e.target === pipsEl)
+      pipsEl.classList.remove('tremor');
+    else if (e.animationName === 'ignite-core')
+      pip?.classList.remove('ignite');
+    else if (e.animationName === 'douse-core')
+      pip?.classList.remove('douse');
+  });
+
+  // Same rules as fearstate.normalize(); anything else is ignored.
+  function sanitize(raw) {
+    if (!raw || !Number.isInteger(raw.fear))
+      return null;
+    const max = Number.isInteger(raw.max) ? clamp(raw.max, 1, MAX_LIMIT) : DEFAULT_MAX;
+    return {fear: clamp(raw.fear, 0, max), max};
+  }
+
+  async function poll() {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), Math.max(1000, pollMs * 3));
+    try {
+      const res = await fetch('state', {cache: 'no-store', signal: ctrl.signal});
+      if (res.ok) {
+        const state = sanitize(await res.json());
+        if (state && (!shown || state.fear !== shown.fear || state.max !== shown.max))
+          render(state);
+      }
+    } catch {
+      // Server unreachable or bad response: keep showing the last state.
+    } finally {
+      clearTimeout(timer);
+      setTimeout(poll, pollMs);
+    }
+  }
+
+  poll();
+})();
+</script>
+</body>
+</html>
