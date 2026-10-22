@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="ember">
+<head>
+<meta charset="utf-8">
+<title>Countdowns</title>
+<!--
+  Daggerheart countdowns overlay for an OBS Browser Source (up to 3 countdowns).
+  Query params (all optional):
+    theme=ember|frost|blood   size=xs|sm|md|lg|xl|<px>   align=left|center|right
+    valign=top|center|bottom  layout=column|row  label=0|1  plate=0|1  motion=0|1
+    poll=<ms>  bg=<hex, preview only>
+  Recommended source size for size=md, layout=column (default): 520 x 220.
+-->
+<style>
+  /* Theme colours: keep in sync with overlay.html. */
+  :root {
+    --u: 48px;
+    --justify: flex-start;
+    --valign: flex-start;
+
+    --core: #d946ef;
+    --hot: #ffe4ff;
+    --deep: #581c87;
+    --glow: rgba(217, 70, 239, 0.8);
+    --rim: rgba(205, 170, 235, 0.55);
+    --shell: rgba(20, 6, 30, 0.6);
+    --text: #f3e2ff;
+    --plate: rgba(12, 4, 18, 0.55);
+    --plate-edge: rgba(200, 120, 255, 0.22);
+  }
+  [data-theme="frost"] {
+    --core: #38bdf8;
+    --hot: #ecfbff;
+    --deep: #1e3a8a;
+    --glow: rgba(56, 189, 248, 0.75);
+    --rim: rgba(175, 215, 245, 0.55);
+    --shell: rgba(4, 12, 26, 0.6);
+    --text: #e2f6ff;
+    --plate: rgba(4, 10, 22, 0.55);
+    --plate-edge: rgba(120, 200, 255, 0.22);
+  }
+  [data-theme="blood"] {
+    --core: #e11d48;
+    --hot: #ffe1e1;
+    --deep: #7f1d1d;
+    --glow: rgba(225, 29, 72, 0.75);
+    --rim: rgba(235, 175, 175, 0.5);
+    --shell: rgba(26, 4, 6, 0.6);
+    --text: #ffe4e4;
+    --plate: rgba(18, 4, 4, 0.55);
+    --plate-edge: rgba(255, 110, 110, 0.2);
+  }
+  /* Progress countdowns are gold in every theme. */
+  .cd.progress {
+    --core: #f5b942;
+    --hot: #fff4d6;
+    --deep: #6b3f05;
+    --glow: rgba(245, 185, 66, 0.75);
+    --rim: rgba(245, 215, 150, 0.6);
+    --text: #fff0cf;
+    --plate-edge: rgba(245, 190, 90, 0.25);
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: transparent;
+  }
+  body {
+    display: flex;
+    align-items: var(--valign);
+    justify-content: var(--justify);
+    box-sizing: border-box;
+    padding: calc(var(--u) * 0.25);
+    font-family: "Cinzel", "Cormorant SC", "Trajan Pro", "Palatino Linotype", "Book Antiqua",
+                 Palatino, "URW Palladio L", Georgia, serif;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+  }
+
+  .list {
+    display: flex;
+    flex-direction: column;
+    align-items: var(--justify);
+    gap: calc(var(--u) * 0.22);
+    max-width: 100%;
+    opacity: 0;
+    transition: opacity 0.8s ease;
+  }
+  .list.ready { opacity: 1; }
+  .layout-row .list {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .cd {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--u) * 0.3);
+    padding: calc(var(--u) * 0.1) calc(var(--u) * 0.45) calc(var(--u) * 0.1) calc(var(--u) * 0.1);
+    border-radius: calc(var(--u) * 0.6);
+    background: var(--plate);
+    box-shadow: inset 0 0 0 1px var(--plate-edge), 0 0 calc(var(--u) * 0.25) rgba(0, 0, 0, 0.35);
+  }
+  .align-right .cd {
+    flex-direction: row-reverse;
+    padding: calc(var(--u) * 0.1) calc(var(--u) * 0.1) calc(var(--u) * 0.1) calc(var(--u) * 0.45);
+  }
+  .no-plate .cd { background: none; box-shadow: none; }
+
+  /* Die-like hexagonal badge with the remaining value. */
+  .badge {
+    position: relative;
+    flex: none;
+    width: var(--u);
+    height: var(--u);
+  }
+  .badge i, .badge b {
+    position: absolute;
+    display: block;
+  }
+  .badge .glow {
+    inset: -30%;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--glow) 0%, transparent 62%);
+    opacity: 0.45;
+  }
+  .badge .rim, .badge .face {
+    clip-path: polygon(50% 0%, 93% 25%, 93% 75%, 50% 100%, 7% 75%, 7% 25%);
+  }
+  .badge .rim {
+    inset: 0;
+    background: linear-gradient(160deg, var(--hot), var(--core) 45%, var(--deep));
+  }
+  .badge .face {
+    inset: 7%;
+    background: radial-gradient(circle at 50% 30%, var(--deep) 0%, var(--shell) 75%), #0c0410;
+  }
+  .badge .ring {
+    inset: -12%;
+    border-radius: 50%;
+    border: max(1.5px, calc(var(--u) * 0.04)) solid var(--hot);
+    box-shadow: 0 0 calc(var(--u) * 0.3) var(--core);
+    opacity: 0;
+  }
+  .badge .num {
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--hot);
+    font-size: calc(var(--u) * 0.5);
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums lining-nums;
+    text-shadow: 0 0 calc(var(--u) * 0.12) var(--core), 0 1px 2px #000;
+  }
+
+  .name {
+    color: var(--text);
+    font-size: calc(var(--u) * 0.36);
+    font-weight: 600;
+    line-height: 1.1;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    text-shadow: 0 0 calc(var(--u) * 0.15) var(--glow), 0 1px 2px #000, 0 0 1px #000;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: calc(var(--u) * 7.5);
+  }
+  .no-label .name { display: none; }
+  .no-label .cd { padding: calc(var(--u) * 0.1); }
+
+  /* Reached zero: stays lit until the GM deletes it. */
+  .cd.triggered .glow { opacity: 0.9; animation: trig-pulse 1.8s ease-in-out infinite; }
+  .cd.triggered .rim { background: linear-gradient(160deg, #fff, var(--hot) 40%, var(--core)); }
+  .cd.triggered .name { color: var(--hot); }
+
+  .cd.enter { animation: cd-enter 0.55s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+  .cd.leave { animation: cd-leave 0.5s ease-in both; }
+  .num.down { animation: num-down 0.45s cubic-bezier(0.2, 0.8, 0.3, 1); }
+  .num.up { animation: num-up 0.45s cubic-bezier(0.2, 0.8, 0.3, 1); }
+  .badge.thump { animation: thump 0.45s ease-out; }
+  .cd.burst .badge { animation: shake 0.5s linear; }
+  .cd.burst .ring { animation: ring 0.9s ease-out; }
+  .cd.burst .glow { animation: flash 1s ease-out; }
+
+  @keyframes cd-enter {
+    0% { opacity: 0; transform: translateY(calc(var(--u) * -0.2)) scale(0.92); }
+    100% { opacity: 1; transform: none; }
+  }
+  @keyframes cd-leave {
+    0% { opacity: 1; transform: none; }
+    100% { opacity: 0; transform: scale(0.9); }
+  }
+  @keyframes num-down {
+    0% { opacity: 0; transform: translateY(-35%); }
+    100% { opacity: 1; transform: none; }
+  }
+  @keyframes num-up {
+    0% { opacity: 0; transform: translateY(35%); }
+    100% { opacity: 1; transform: none; }
+  }
+  @keyframes thump {
+    0% { transform: scale(1.14); }
+    100% { transform: scale(1); }
+  }
+  @keyframes shake {
+    0%, 100% { transform: translate(0, 0); }
+    15% { transform: translate(calc(var(--u) * -0.06), calc(var(--u) * 0.02)) rotate(-4deg); }
+    35% { transform: translate(calc(var(--u) * 0.06), calc(var(--u) * -0.02)) rotate(4deg); }
+    55% { transform: translate(calc(var(--u) * -0.04), 0) rotate(-2deg); }
+    75% { transform: translate(calc(var(--u) * 0.02), 0) rotate(1deg); }
+  }
+  @keyframes ring {
+    0% { opacity: 0; transform: scale(0.5); }
+    20% { opacity: 1; }
+    100% { opacity: 0; transform: scale(2); }
+  }
+  @keyframes flash {
+    0% { opacity: 0.45; transform: scale(1); }
+    20% { opacity: 1; transform: scale(1.5); }
+    100% { opacity: 0.9; transform: scale(1); }
+  }
+  @keyframes trig-pulse {
+    0%, 100% { opacity: 0.6; transform: scale(0.95); }
+    50% { opacity: 1; transform: scale(1.12); }
+  }
+
+  .still *, .still *::after { animation: none !important; transition: none !important; }
+</style>
+</head>
+<body>
+<div class="list" id="list" role="status" aria-live="polite"></div>
+<script>
+(() => {
+  'use strict';
+
+  // Same limits as fearstate.normalize_countdowns().
+  const MAX_COUNTDOWNS = 3;
+  const COUNTDOWN_LIMIT = 30;
+  const NAME_LIMIT = 32;
+  const ID_RE = /^[A-Za-z0-9_-]{1,16}$/;
+
+  const SIZES = {xs: 28, sm: 36, md: 48, lg: 64, xl: 84};
+  const THEMES = ['ember', 'frost', 'blood'];
+  const ALIGN = {left: 'flex-start', center: 'center', right: 'flex-end'};
+  const VALIGN = {top: 'flex-start', center: 'center', bottom: 'flex-end'};
+
+  const params = new URLSearchParams(location.search);
+  const root = document.documentElement;
+  const body = document.body;
+  const listEl = document.getElementById('list');
+
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const flag = (name, dflt) => (params.has(name) ? params.get(name) !== '0' : dflt);
+
+  const theme = params.get('theme');
+  root.dataset.theme = THEMES.includes(theme) ? theme : 'ember';
+
+  const sizeParam = params.get('size') || 'md';
+  const sizePx = SIZES[sizeParam] ?? clamp(parseInt(sizeParam, 10) || SIZES.md, 12, 300);
+  root.style.setProperty('--u', `${sizePx}px`);
+  const align = ALIGN[params.get('align')] ? params.get('align') : 'left';
+  root.style.setProperty('--justify', ALIGN[align]);
+  root.style.setProperty('--valign', VALIGN[params.get('valign')] || VALIGN.top);
+
+  const bg = params.get('bg');
+  if (bg && /^[0-9a-f]{3,8}$/i.test(bg))
+    body.style.background = `#${bg}`;
+
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const motion = flag('motion', !reducedMotion);
+  body.classList.toggle(`align-${align}`, true);
+  body.classList.toggle('layout-row', params.get('layout') === 'row');
+  body.classList.toggle('no-label', !flag('label', true));
+  body.classList.toggle('no-plate', !flag('plate', true));
+  body.classList.toggle('still', !motion);
+
+  const pollMs = clamp(parseInt(params.get('poll'), 10) || 300, 100, 5000);
+
+  const shown = new Map(); // id -> {root, badge, num, name, value}
+  let lastKey = null;
+
+  function restart(el, cls) {
+    el.classList.remove(cls);
+    void el.offsetWidth;
+    el.classList.add(cls);
+  }
+
+  function create() {
+    const rootEl = document.createElement('div');
+    rootEl.className = 'cd';
+    rootEl.innerHTML =
+      '<div class="badge"><i class="glow"></i><i class="rim"></i><i class="face"></i>' +
+      '<i class="ring"></i><b class="num"></b></div><div class="name"></div>';
+    listEl.append(rootEl);
+    return {
+      root: rootEl,
+      badge: rootEl.querySelector('.badge'),
+      num: rootEl.querySelector('.num'),
+      name: rootEl.querySelector('.name'),
+      value: null,
+    };
+  }
+
+  function remove(entry) {
+    if (!motion) {
+      entry.root.remove();
+      return;
+    }
+    entry.root.classList.remove('enter', 'burst');
+    entry.root.classList.add('leave');
+    // animationend is the normal path; the timeout covers hidden sources.
+    const done = () => entry.root.remove();
+    entry.root.addEventListener('animationend', e => e.animationName === 'cd-leave' && done());
+    setTimeout(done, 1000);
+  }
+
+  function update(entry, c, animate) {
+    const prev = entry.value;
+    entry.root.classList.toggle('progress', c.kind === 'progress');
+    entry.name.textContent = c.name || 'Countdown';
+    entry.root.setAttribute('aria-label', `${c.name || 'Countdown'}: ${c.value} of ${c.start}`);
+    entry.root.classList.toggle('triggered', c.value === 0);
+    if (prev === c.value)
+      return;
+    entry.num.textContent = c.value;
+    entry.value = c.value;
+    if (!animate || prev === null || !motion)
+      return;
+    restart(entry.num, c.value < prev ? 'down' : 'up');
+    restart(entry.badge, 'thump');
+    if (c.value === 0)
+      restart(entry.root, 'burst');
+  }
+
+  function render(countdowns, animate) {
+    const ids = new Set(countdowns.map(c => c.id));
+    for (const [id, entry] of shown) {
+      if (!ids.has(id)) {
+        remove(entry);
+        shown.delete(id);
+      }
+    }
+    for (const c of countdowns) {
+      let entry = shown.get(c.id);
+      if (!entry) {
+        entry = create();
+        shown.set(c.id, entry);
+        if (animate && motion)
+          entry.root.classList.add('enter');
+      }
+      update(entry, c, animate);
+    }
+  }
+
+  listEl.addEventListener('animationend', e => {
+    const cls = {'cd-enter': 'enter', 'shake': 'burst', 'num-down': 'down', 'num-up': 'up', 'thump': 'thump'}[e.animationName];
+    if (!cls)
+      return;
+    const el = cls === 'burst' ? e.target.closest('.cd') : e.target;
+    el?.classList.remove(cls);
+  });
+
+  function sanitize(raw) {
+    if (!raw || !Array.isArray(raw.countdowns))
+      return raw && Number.isInteger(raw.fear) ? [] : null;
+    const result = [];
+    const seen = new Set();
+    for (const c of raw.countdowns) {
+      if (result.length === MAX_COUNTDOWNS)
+        break;
+      if (!c || typeof c !== 'object' || !Number.isInteger(c.start))
+        continue;
+      if (typeof c.id !== 'string' || !ID_RE.test(c.id) || seen.has(c.id))
+        continue;
+      const start = clamp(c.start, 1, COUNTDOWN_LIMIT);
+      result.push({
+        id: c.id,
+        name: typeof c.name === 'string' ? c.name.trim().slice(0, NAME_LIMIT) : '',
+        start,
+        value: Number.isInteger(c.value) ? clamp(c.value, 0, start) : start,
+        kind: c.kind === 'progress' ? 'progress' : 'consequence',
+      });
+      seen.add(c.id);
+    }
+    return result;
+  }
+
+  async function poll() {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), Math.max(1000, pollMs * 3));
+    try {
+      const res = await fetch('state', {cache: 'no-store', signal: ctrl.signal});
+      if (res.ok) {
+        const countdowns = sanitize(await res.json());
+        const key = countdowns && JSON.stringify(countdowns);
+        if (countdowns && key !== lastKey) {
+          render(countdowns, lastKey !== null);
+          lastKey = key;
+          listEl.classList.add('ready');
+        }
+      }
+    } catch {
+      // Server unreachable or bad response: keep showing the last state.
+    } finally {
+      clearTimeout(timer);
+      setTimeout(poll, pollMs);
+    }
+  }
+
+  poll();
+})();
+</script>
+</body>
+</html>
