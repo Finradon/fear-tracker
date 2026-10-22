@@ -46,3 +46,64 @@
   background-color: #8a2be2;
   color: #ffffff;
 }
+
+.fear-tracker-small {
+  min-width: 28px;
+  min-height: 24px;
+  padding: 4px 6px;
+}
+
+.fear-tracker-cd-row {
+  spacing: 6px;
+}
+
+.fear-tracker-cd-name {
+  max-width: 150px;
+}
+
+.fear-tracker-cd-value {
+  font-weight: bold;
+  min-width: 52px;
+  text-align: right;
+  padding-right: 4px;
+}
+
+.fear-tracker-cd-value.consequence {
+  color: #e48cff;
+}
+
+.fear-tracker-cd-value.progress {
+  color: #f5c04a;
+}
+
+.fear-tracker-cd-value.triggered {
+  text-shadow: 0 0 6px rgba(255, 255, 255, 0.6);
+}
+
+.fear-tracker-add {
+  spacing: 6px;
+}
+
+.fear-tracker-add-row {
+  spacing: 6px;
+}
+
+.fear-tracker-start {
+  min-width: 22px;
+  text-align: center;
+  font-weight: bold;
+}
+
+.fear-tracker-kind {
+  padding: 4px 8px;
+}
+
+.fear-tracker-kind:checked {
+  background-color: #a36b0a;
+  color: #ffffff;
+}
+
+.fear-tracker-note {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.9em;
+}

@@ -61,8 +61,13 @@ export default class FearTrackerPreferences extends ExtensionPreferences {
             subtitle_selectable: true,
         }));
         filesGroup.add(new Adw.ActionRow({
-            title: 'Overlay URL',
+            title: 'Fear overlay URL',
             subtitle: 'http://127.0.0.1:8765/overlay.html (default port, server must be running)',
+            subtitle_selectable: true,
+        }));
+        filesGroup.add(new Adw.ActionRow({
+            title: 'Countdown overlay URL',
+            subtitle: 'http://127.0.0.1:8765/countdowns.html',
             subtitle_selectable: true,
         }));
     }

@@ -9,6 +9,11 @@ Gio._promisify(Gio.File.prototype, 'replace_contents_bytes_async', 'replace_cont
 
 export const DEFAULT_MAX = 12;
 export const MAX_LIMIT = 30;
+export const MAX_COUNTDOWNS = 3;
+export const COUNTDOWN_LIMIT = 30;
+export const NAME_LIMIT = 32;
+
+const COUNTDOWN_ID = /^[A-Za-z0-9_-]{1,16}$/;
 
 const MONITOR_DEBOUNCE_MS = 100;
 
@@ -21,8 +26,38 @@ export function pipText(fear, max) {
 }
 
 /**
- * Validate a parsed fear.json object. Returns {fear, max, updated} with
- * clamped values, or null if the object is unusable.
+ * Keep the valid countdowns (at most MAX_COUNTDOWNS), dropping bad entries.
+ *
+ * @param {*} raw - parsed JSON
+ */
+export function normalizeCountdowns(raw) {
+    if (!Array.isArray(raw))
+        return [];
+    const result = [];
+    const seen = new Set();
+    for (const c of raw) {
+        if (result.length === MAX_COUNTDOWNS)
+            break;
+        if (!c || typeof c !== 'object' || !Number.isInteger(c.start))
+            continue;
+        if (typeof c.id !== 'string' || !COUNTDOWN_ID.test(c.id) || seen.has(c.id))
+            continue;
+        const start = clamp(c.start, 1, COUNTDOWN_LIMIT);
+        result.push({
+            id: c.id,
+            name: typeof c.name === 'string' ? c.name.trim().slice(0, NAME_LIMIT) : '',
+            start,
+            value: Number.isInteger(c.value) ? clamp(c.value, 0, start) : start,
+            kind: c.kind === 'progress' ? 'progress' : 'consequence',
+        });
+        seen.add(c.id);
+    }
+    return result;
+}
+
+/**
+ * Validate a parsed fear.json object. Returns {fear, max, updated, countdowns}
+ * with clamped values, or null if the object is unusable.
  *
  * @param {*} raw - parsed JSON
  */
@@ -34,12 +69,13 @@ export function normalize(raw) {
         fear: clamp(raw.fear, 0, max),
         max,
         updated: Number.isInteger(raw.updated) ? raw.updated : 0,
+        countdowns: normalizeCountdowns(raw.countdowns),
     };
 }
 
 export class FearStore {
     /**
-     * @param {Function} onExternalChange - called with {fear, max, updated}
+     * @param {Function} onExternalChange - called with {fear, max, updated, countdowns}
      *   when another process (e.g. scripts/set_fear.py) rewrites fear.json
      */
     constructor(onExternalChange) {
@@ -80,11 +116,10 @@ export class FearStore {
      * Persist a new state. Writes are serialized and coalesced, so rapid
      * key presses never interleave and the last value always wins.
      *
-     * @param {number} fear - current Fear
-     * @param {number} max - maximum Fear
+     * @param {object} state - {fear, max, countdowns}
      */
-    save(fear, max) {
-        this._pending = {fear, max, updated: Date.now()};
+    save({fear, max, countdowns}) {
+        this._pending = {fear, max, updated: Date.now(), countdowns};
         if (!this._writing)
             this._flush().catch(e => console.error(`fear-tracker: write failed: ${e.message}`));
     }
