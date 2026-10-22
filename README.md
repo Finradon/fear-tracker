@@ -30,7 +30,7 @@ Makefile                        serve / install / demo / test / check / pack
 ## Quick start
 
 ```sh
-git clone <this repo> ~/repos/fear-tracker && cd ~/repos/fear-tracker
+git clone https://github.com/Finradon/fear-tracker.git ~/repos/fear-tracker && cd ~/repos/fear-tracker
 make install-service          # extension + server as a systemd user service
 # log out and back in (Wayland)
 python3 scripts/set_fear.py 5 # or press Ctrl+Super+Page Up
